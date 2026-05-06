@@ -73,12 +73,33 @@ class NeuralNetwork:
     def backward(self, X, y, learning_rate):
 
         layers = self.feedforward(X)
+        
+        # Output layer error (delta) calculation
         if type(self.norm_fcn[-1]) == list:
-            delta = [np.array([[(y[i] - layers[-1][0][i]) * self.norm_fcn[-1][i](layers[-1][0][i], type = 'Derivative') for i in range(len(self.norm_fcn[-1]))]])]
+            num_heads = len(self.norm_fcn[-1])
+            delta_cols = []
+            
+            # Loop through the columns (Head 0 = Critic, Head 1 = Actor)
+            for c in range(num_heads):
+                # Grab the entire column (all 1000 frames) for this specific head
+                y_col = y[:, c]
+                layer_col = layers[-1][:, c]
+                
+                # Calculate the error and derivative for the whole batch at once
+                error = y_col - layer_col
+                derivative = self.norm_fcn[-1][c](layer_col, type='Derivative')
+                
+                # delta for this head is (error * derivative)
+                delta_cols.append(error * derivative)
+                
+            # Stack the columns side-by-side to recreate the (Batch_Size, 2) matrix
+            delta = [np.column_stack(delta_cols)]
+            
         else:
             delta = [(y - layers[-1]) * self.norm_fcn[-1](layers[-1], type = 'Derivative')]
+
+        # --- The rest of your code stays exactly the same! ---
         for i in range(2, self.leng):
-            print(delta[-1])
             delta.append(np.dot(delta[-1], self.theta[-i+1].T) * self.norm_fcn[-i](layers[-i], type = 'Derivative'))
 
         for i in range(self.leng-1):

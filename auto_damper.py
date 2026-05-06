@@ -15,58 +15,64 @@ class Auto_Damper():
         self.d_log_std = 0
         self.max_motor_force = max_motor_force
         self.dt = dt
+
         self.NN.theta_generate()
+
         self.X = self.NN.theta_recover()
 
+    def critic(self, state):
+        location_cf = 10
+        return  (15 - 2 *  math.cos(state[1]) - location_cf * state[0]**2) / 100
 
-    def critic(self, state, action_force):
-        return  (15 - 2 *  math.cos(state[1]) - state[0]**2) / 100
-    
-    
     def backward_std(self, action, mu, sigma, advantage):
-        # 1. Calculate the gradient for the mean
-        # This acts as the "dZ" for your output layer, which you will backprop 
-        # through W_out_mean and your hidden layers.
         epsilon = 1e-8
+        action_discrepency = action / 200 + 0.5 - mu
 
-        d_mu = -advantage * ((action - mu) / (sigma ** 2 + epsilon))
+        d_mu = -advantage * (action_discrepency / (sigma ** 2 + epsilon))
         
-        # 2. Calculate the gradient for the standalone variable
-        # We accumulate this gradient directly
-        self.d_log_std += -advantage * (((action - mu)**2 / (sigma ** 2 + epsilon)) - 1.0)
+        # 1. Calculate the gradient for this specific frame
+        step_d_log_std = -advantage * ((action_discrepency**2 / (sigma ** 2 + epsilon)) - 1.0)
         
-        # ... proceed to backprop d_mu through the rest of the MLP ...
-        return d_mu
-    
+        # 2. THE FIX: Clip it before it rubber-bands!
+        if abs(step_d_log_std) > 1.0: 
+            step_d_log_std = np.sign(step_d_log_std) * 1.0
+            
+        # 3. Now safely accumulate it
+        self.d_log_std += step_d_log_std
+        
+        return d_mu   
+     
     def train(self):
+
         gamma = 0.99  # Discount factor (how much we care about the future)
         learning_rate = 0.001 # For your custom optimizer
         reward_history = []
         log_std_history = []
-        # We train over "Episodes", not Epochs. 
-        # An episode is one attempt at balancing until it falls.
-        for episode in range(5000):
-            # 1. Reset the simulation to the starting position (e.g., straight up)
+
+        for episode in range(500):
+            # Reset the simulation to the starting position
             state = np.array([self.x, self.th1, self.th2, self.dx, self.dth1, self.dth2])
+            scale_factors = np.array([10.0, 3.14, 3.14, 50.0, 50.0, 50.0])
+
             done = False
             total_episode_reward = 0
             t = 0
             d_V_cumi = 0
             d_mu_cumi = 0
             self.d_log_std = 0
+            states_memory = []
+            targets_memory = []
+
             while not done:
                 t += 1
-                # --- THE FORWARD PASS ---
-                # The brain looks at the state and picks a force
-                # nn[0] = V, nn[1] = mu (Actual force)
-                NN_output = self.NN.feedforward(state)[-1][0]
-                # print(NN_output)
+ 
+                # nn[0] = V (Score), nn[1] = mu (Actual force)
+                # Normalize before asking for an action
+                normalized_state = state / scale_factors
+                NN_output = self.NN.feedforward(normalized_state)[-1][0]
                 action_force = (NN_output[1] - 0.5) * 200 + np.exp(self.log_std) * np.random.randn()
-                print(NN_output)
-                print(action_force)
                 current_value = NN_output[0]
                            
-            
                 # --- THE PHYSICS ENGINE ---
                 # The cart moves for 0.02 seconds using the chosen force
                 next_state = slider.rk4_step(
@@ -74,18 +80,18 @@ class Auto_Damper():
                                 self.params,               # *args: gravity, masses, lengths
                                 action_force,           # *args: dynamic inputs
                                 self.dt)
-                reward = self.critic(next_state, action_force)
+                reward = self.critic(next_state)
                 total_episode_reward += reward
-                done = next_state[1] <= np.pi/2 or next_state[1] >= 3*np.pi/2 or t >= 2000 or abs(next_state[3]) > 100 or abs(next_state[4]) > 100 or abs(next_state[0]) > 100 or abs(next_state[4]) > 100
-                    
-
+                has_nan = np.isnan(next_state).any() 
+                done = has_nan or next_state[1] <= np.pi/2 or next_state[1] >= 3*np.pi/2 or t >= 2000 or abs(next_state[3]) > 100 or abs(next_state[4]) > 100 or abs(next_state[0]) > 100 or abs(next_state[5]) > 100                
 
                 # --- THE TARGET CALCULATION ---
-                # What is the value of the state we just landed in?
+                # Value of the state we just landed in
                 if done:
                     target_value = reward # If we died, there is no future.
                 else:
-                    next_value = self.NN.feedforward(next_state)[-1][0][0]
+                    normalized_next_state = next_state / scale_factors
+                    next_value = self.NN.feedforward(normalized_next_state)[-1][0][0]
                     target_value = reward + gamma * next_value
                     
                 # Advantage: Was the move better than the Critic expected?
@@ -102,21 +108,26 @@ class Auto_Damper():
                 d_mu = self.backward_std(
                     action=action_force, 
                     mu=NN_output[1], 
-                    sigma=np.exp(self.log_std), 
-                    advantage=advantage
-                )
-                if d_V > 0.5 or d_mu > 0.5:
-                    d_V /= max(d_V, d_mu)
-                    d_mu /= max(d_V, d_mu)
+                    sigma=np.exp(self.log_std)/200, 
+                    advantage=advantage)
+
+                # Capping function
+                if abs(d_V) > 1.0: d_V = np.sign(d_V) * 1.0
+                if abs(d_mu) > 1.0: d_mu = np.sign(d_mu) * 1.0                
                 
                 d_V_cumi += d_V
                 d_mu_cumi += d_mu
                 
                 # Move to the next frame
                 state = next_state
-            
 
-            self.NN.backward(np.array([state]), (action_force + d_mu/t, current_value + d_V/t), learning_rate)
+                states_memory.append(normalized_state)
+                target_V = current_value - d_V
+                target_mu = NN_output[1] - d_mu
+                targets_memory.append([target_V, target_mu])
+
+
+            self.NN.backward(np.array(states_memory), np.array(targets_memory), learning_rate/t)
             self.log_std -= learning_rate * self.d_log_std/t
             self.log_std = np.clip(self.log_std, 0, 3.0)
             if t>= 1000:
