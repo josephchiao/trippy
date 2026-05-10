@@ -322,7 +322,7 @@ class DoublePendulum:
 
         if mode == 'analog':
             angular_controller = pid.pid_controller(np.pi, self.state[1], kp, ki, kd)
-            position_controller = pid.pid_controller(target, self.state[0], 16, 0, 1800, display = False)
+            position_controller = pid.pid_controller(target, self.state[0], 2, 0, 500, display = False)
             angular2_countroller = pid.pid_controller(np.pi, self.state[2], kp, ki, kd)
         elif mode == 'RL':
             NN = nn.NeuralNetwork((6, 64, 64, 2), [nn.ReLU, nn.ReLU, [nn.linear, nn.sigmoid]], 'nn_library')
@@ -339,7 +339,7 @@ class DoublePendulum:
                 angular_controller.location = self.state[1]
                 position_controller.location = self.state[0]
                 angular2_countroller.location = self.state[2]
-                state_energy = ((-np.cos(self.state[2]) + 1) * 6 + 0.42 * (self.state[5]**2)) / 12  # scale 0 to 1
+                state_energy = ((-np.cos(self.state[2]) + 1) * 6 + 0.42 * (self.state[5]**2)) / 12  # 0 when stationary at bottom, 1 when stationary at top
 
                 # Stage 0: If in excessive motion, stablalize
                 if abs(self.state[3]) > 40 or abs(self.state[4]) > 30 or abs(self.state[5]) > 30 or stable_counter == -1:
@@ -401,34 +401,56 @@ class DoublePendulum:
                         taming_time = 0
                     taming_time += 1
                     stable_counter = -2
-                    angular_controller.kp = 260 * ((2 - ((-np.cos(self.state[2]) + 1) * 6 + 0.42 * (self.state[5]**2)) / 12 ) * 0.1 + 0.9)
+                    angular_controller.kp = 260 * ((2 - ((-np.cos(self.state[2]) + 1) * 6 + 0.42 * (self.state[5]**2)) / 12 ) * 0.4 + 0.4)
                     angular_controller.kd = 700 
-                    angular_controller.target = np.pi 
+                    angular_controller.target = np.pi + self.state[5] * 0.0081
                     
                     self.motor_force = angular_controller.update()
                     position_controller.update()
                     angular2_countroller.update()
 
-                    if self.state[2] >= 19 * np.pi/20 and self.state[2] <= 21 * np.pi/20:
+                    if self.state[2] >= 39 * np.pi/40 and self.state[2] <= 41 * np.pi/40:
                         stable_counter = 1
+                        print(self.current_time)
+                        print(state_energy)
 
 
                 # Stage 4: Maintain 
                 else:
+
                     state_string = 'maintain'
                     angular_controller.kp = 1000
                     angular_controller.kd = 1000
                     angular_controller.target = np.pi
                     
                     offset = position_controller.update()
-                    rod2_target = np.pi + 0.005 * math.atan(-0.1 * offset)
-                    rod1_target = 1.2 * (self.state[2] - rod2_target) + rod2_target
+                    rod2_target = np.pi + 0.03 * math.atan(-0.1 * offset)
+                    rod1_target = 1.21 * (self.state[2] - rod2_target) + 0.05 * self.state[5] + rod2_target
 
                     angular_controller.target = rod1_target
-
+                    
+                    angular2_countroller.update()
                     self.motor_force = angular_controller.update()
-                    if self.state[2] <= 9 * np.pi/10 or self.state[2] >= 11 * np.pi/10:
+                    if self.state[2] <= 7 * np.pi/8 or self.state[2] >= 9 * np.pi/8:
                         stable_counter = -2
+                    
+                    
+                    
+                    # state_string = 'maintain'
+                    # angular_controller.kp = 1000
+                    # angular_controller.kd = 1000
+
+                    # angular2_countroller.kp = 30
+                    # angular2_countroller.kd = 70
+
+                    # offset = position_controller.update()
+                    # angular2_countroller.target = np.pi + 0.01 * math.atan(-0.1 * offset)
+                    # #
+                    # angular_controller.target = -math.tan(angular2_countroller.update()) * 0.05 + np.pi
+                    # self.motor_force = angular_controller.update()
+
+                    # if self.state[2] <= 9 * np.pi/10 or self.state[2] >= 11 * np.pi/10:
+                    #     stable_counter = -2
 
  
 
@@ -911,7 +933,9 @@ class SinglePendulum:
 if __name__ == "__main__":
     # SP = SinglePendulum(params=(9.8, 1, 1, 1), y0 = [0, 0, 0, 0],t_end=60)
     # SP.animate()
-    DP = DoublePendulum(params=(9.8, 1, 1, 1, 1, 1.2), y0 = [1, np.pi, np.pi + 0.01, 0, 0, 0], t_end=20)
-    DP.animate(speed = 2)
+
+    # , y0 = [1, np.pi, np.pi+0.01, 0, 0, 0]
+    DP = DoublePendulum(params=(9.8, 1, 1, 1, 1, 1.2), t_end=50)
+    DP.animate(speed = 1)
 # %%
 
