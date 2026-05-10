@@ -411,9 +411,6 @@ class DoublePendulum:
 
                     if self.state[2] >= 39 * np.pi/40 and self.state[2] <= 41 * np.pi/40:
                         stable_counter = 1
-                        print(self.current_time)
-                        print(state_energy)
-
 
                 # Stage 4: Maintain 
                 else:
@@ -434,24 +431,6 @@ class DoublePendulum:
                     if self.state[2] <= 7 * np.pi/8 or self.state[2] >= 9 * np.pi/8:
                         stable_counter = -2
                     
-                    
-                    
-                    # state_string = 'maintain'
-                    # angular_controller.kp = 1000
-                    # angular_controller.kd = 1000
-
-                    # angular2_countroller.kp = 30
-                    # angular2_countroller.kd = 70
-
-                    # offset = position_controller.update()
-                    # angular2_countroller.target = np.pi + 0.01 * math.atan(-0.1 * offset)
-                    # #
-                    # angular_controller.target = -math.tan(angular2_countroller.update()) * 0.05 + np.pi
-                    # self.motor_force = angular_controller.update()
-
-                    # if self.state[2] <= 9 * np.pi/10 or self.state[2] >= 11 * np.pi/10:
-                    #     stable_counter = -2
-
  
 
             elif mode == 'RL':
@@ -459,7 +438,7 @@ class DoublePendulum:
             
             # reject if the motor is asked to do more than it could
             if abs(self.motor_force) >= self.max_motor_force:
-                # print('Overload at ', t, 's')
+                print('Overload at ', t, 's')
                 if self.motor_force > 0:
                     self.motor_force = self.max_motor_force
                 else:
@@ -935,7 +914,7 @@ if __name__ == "__main__":
     # SP.animate()
 
     # , y0 = [1, np.pi, np.pi+0.01, 0, 0, 0]
-    DP = DoublePendulum(params=(9.8, 1, 1, 1, 1, 1.2), t_end=50)
+    DP = DoublePendulum(params=(9.8, 1, 1, 1, 1, 1.2), t_end=60)
     DP.animate(speed = 1)
 # %%
 
