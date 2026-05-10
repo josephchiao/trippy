@@ -323,6 +323,7 @@ class DoublePendulum:
         if mode == 'analog':
             angular_controller = pid.pid_controller(np.pi, self.state[1], kp, ki, kd)
             position_controller = pid.pid_controller(target, self.state[0], 16, 0, 1800, display = False)
+            angular2_countroller = pid.pid_controller(np.pi, self.state[2], kp, ki, kd)
         elif mode == 'RL':
             NN = nn.NeuralNetwork((6, 64, 64, 2), [nn.ReLU, nn.ReLU, [nn.linear, nn.sigmoid]], 'nn_library')
             NN.theta_recover()
@@ -337,85 +338,106 @@ class DoublePendulum:
                 
                 angular_controller.location = self.state[1]
                 position_controller.location = self.state[0]
-                position_input = position_controller.update()
-                angular_input = angular_controller.update()
+                angular2_countroller.location = self.state[2]
+                state_energy = ((-np.cos(self.state[2]) + 1) * 6 + 0.42 * (self.state[5]**2)) / 12  # scale 0 to 1
 
                 # Stage 0: If in excessive motion, stablalize
-                if abs(self.state[3]) > 20 or abs(self.state[4]) > 10 or stable_counter == -1:
+                if abs(self.state[3]) > 40 or abs(self.state[4]) > 30 or abs(self.state[5]) > 30 or stable_counter == -1:
                     state_string = 'excessive motion'
-                    self.motor_force = position_input
+                    
+                    self.motor_force = position_controller.update()
+                    angular_controller.update()
+                    angular2_countroller.update()
+
                     stable_counter = -1
-                    if abs(self.state[4]) < np.pi/2 and abs(self.state[3]) < 2:
+                    if abs(self.state[4]) < np.pi/2 and abs(self.state[3]) < 2 and abs(self.state[5]) < np.pi/2:
                         stable_counter = 0
 
                 # Stage 1: Initialize swing
                 elif abs(self.state[1]) < 0.01 and abs(self.state[4]) < 0.01:
                     state_string = 'initialize swing'
-                    self.motor_force = 1
+                    
+                    self.motor_force = 10
+
+                    position_controller.update()
+                    angular_controller.update()
+                    angular2_countroller.update()
+
                     stable_counter = 0
                 
                 # Stage 2: increase amplitude
                 elif self.state[1] <= np.pi/2 or self.state[1] >= 3 * np.pi/2:
                     state_string = 'increase amplitude'
-                    if self.state[4] > 0 and self.state[5] > 0:
+
+                    if self.state[4] > 0:
                         self.motor_force = -self.max_motor_force * math.cos(self.state[1])
-                    elif self.state[4] < 0 and self.state[5] < 0:
-                        self.motor_force = self.max_motor_force * math.cos(self.state[1])
                     else:
-                        self.motor_force = 0
-                    self.motor_force *= 0.1
+                        self.motor_force = self.max_motor_force * math.cos(self.state[1])
+                    self.motor_force *= 0.16
+
+                    position_controller.update()
+                    angular_controller.update()
+                    angular2_countroller.update()
+
                     stable_counter = 0
                 
                 # Stage 3: Kick to inverted position
-                elif self.state[1] >= np.pi/2 and self.state[1] <= 3 * np.pi/2 and abs(self.state[1] - np.pi + 0.2 * math.atan(offset)) >= np.pi/5:
-                    state_string = 'kick to inverted position'
-                    angular_controller.kp = 5
-                    angular_controller.kd = 200
+                elif self.state[1] >= np.pi/2 and self.state[1] <= 3 * np.pi/2 and abs(self.state[1] - np.pi + 0.2 * math.atan(offset)) >= np.pi/5 and stable_counter == 0:
+                    state_string = 'kick rod1 to inverted position'
+                    angular_controller.kp = 20
+                    angular_controller.kd = 20
                     angular_controller.target = np.pi
-                    self.motor_force = angular_input
+
+                    self.motor_force = angular_controller.update() * 10
+                    position_controller.update()
+                    angular2_countroller.update()
+                    
                     stable_counter = 0
                 
-
-                elif self.state[2] >= np.pi/6 or self.state[2] <= 11 * np.pi/6 or abs(self.state[5]) >= np.pi/3 or stable_counter == -2:
-                    state_string = 'taming rod2'
+                # Stage 3.5: Kick rod2 to inverted position
+                elif (self.state[2] >= np.pi/6 or self.state[2] <= 11 * np.pi/6 or abs(self.state[5]) >= np.pi/3 or stable_counter == -2) and stable_counter != 1:
+                    state_string = 'kick rod2 to inverted position'
                     if stable_counter != -2:
                         taming_time = 0
                     taming_time += 1
                     stable_counter = -2
-                    angular_controller.kp = 300
-                    angular_controller.kd = 700
-                    angular_controller.target = np.pi + math.cos(t*10) * 0.03
-                    # if self.state[2] <= np.pi:
-                    #     angular_controller.target = np.pi - self.state[2] * 0.01
-                    # else:
-                    #     angular_controller.target = np.pi + (2 * np.pi - self.state[2]) * 0.01
+                    angular_controller.kp = 260 * ((2 - ((-np.cos(self.state[2]) + 1) * 6 + 0.42 * (self.state[5]**2)) / 12 ) * 0.1 + 0.9)
+                    angular_controller.kd = 700 
+                    angular_controller.target = np.pi 
+                    
+                    self.motor_force = angular_controller.update()
+                    position_controller.update()
+                    angular2_countroller.update()
 
-                    self.motor_force = angular_input
-                    if self.state[2] <= np.pi/6 and self.state[2] >= 11 * np.pi/6 and abs(self.state[5]) <= np.pi/3:
-                        stable_counter = 0
+                    if self.state[2] >= 19 * np.pi/20 and self.state[2] <= 21 * np.pi/20:
+                        stable_counter = 1
 
 
                 # Stage 4: Maintain 
                 else:
                     state_string = 'maintain'
-                    angular_controller.kp = kp
-                    angular_controller.kd = kd
+                    angular_controller.kp = 1000
+                    angular_controller.kd = 1000
                     angular_controller.target = np.pi
+                    
+                    offset = position_controller.update()
+                    rod2_target = np.pi + 0.005 * math.atan(-0.1 * offset)
+                    rod1_target = 1.2 * (self.state[2] - rod2_target) + rod2_target
 
-                    stable_counter += 1 
-                    if stable_counter >= 0.5 * self.fps:
-                        offset = -0.1 * position_input
-                        angular_controller.target = np.pi + 0.018 * math.atan(offset)
+                    angular_controller.target = rod1_target
 
-                    self.motor_force = angular_input
-                
+                    self.motor_force = angular_controller.update()
+                    if self.state[2] <= 9 * np.pi/10 or self.state[2] >= 11 * np.pi/10:
+                        stable_counter = -2
+
+ 
 
             elif mode == 'RL':
                 self.motor_force = NN.feedforward(self.state)[-1][0][1] * 100
             
             # reject if the motor is asked to do more than it could
             if abs(self.motor_force) >= self.max_motor_force:
-                print('Overload at ', t, 's')
+                # print('Overload at ', t, 's')
                 if self.motor_force > 0:
                     self.motor_force = self.max_motor_force
                 else:
@@ -433,7 +455,7 @@ class DoublePendulum:
 
 
     def animate(self, speed = 1):
-        solution, cost, state_history = self.solve_step_inverted_rod_1()
+        solution, cost, state_history = self.solve_step_inverted_rod_2()
         print('cost =', cost)
         # Extract position arrays for the animation
         x_cart_history = solution[:, 0]
@@ -889,7 +911,7 @@ class SinglePendulum:
 if __name__ == "__main__":
     # SP = SinglePendulum(params=(9.8, 1, 1, 1), y0 = [0, 0, 0, 0],t_end=60)
     # SP.animate()
-    DP = DoublePendulum(params=(9.8, 1, 1, 1, 1, 1.2), t_end=120)
-    DP.animate(speed = 1)
+    DP = DoublePendulum(params=(9.8, 1, 1, 1, 1, 1.2), y0 = [1, np.pi, np.pi + 0.01, 0, 0, 0], t_end=20)
+    DP.animate(speed = 2)
 # %%
 
