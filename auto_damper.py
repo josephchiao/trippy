@@ -7,7 +7,8 @@ from scipy.integrate import solve_ivp
 import redone
 
 class Auto_Damper():
-    def __init__(self, state, max_motor_force, dt,params = (9.81, 1, 1, 1, 1, 1)):
+    
+    def __init__(self, state, max_motor_force, dt, params = (9.81, 1, 1, 1, 1, 1)):
         self.NN = nn.NeuralNetwork((6, 64, 64, 2), [nn.ReLU, nn.ReLU, [nn.linear, nn.sigmoid]], 'nn_library')
         self.x, self.th1, self.th2, self.dx, self.dth1, self.dth2 = state
         self.params = params
@@ -134,7 +135,7 @@ class Auto_Damper():
                 print('runtime = ', t)
             if total_episode_reward >= 2500:
                 print(episode)
-                DP = redone.DoublePendulum()
+                DP = redone.SinglePendulum()
                 DP.animate()
             print(f"Episode {episode} finished! Total Reward: {total_episode_reward}")
 
@@ -156,7 +157,5 @@ class Auto_Damper():
 
 
 main = Auto_Damper([0, np.pi, np.pi/6, 0, 0, 0], 100, 1/60)
-# DP = redone.DoublePendulum()
-# DP.animate()
 for i in range(10):
     main.train()
