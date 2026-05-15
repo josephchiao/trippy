@@ -17,7 +17,7 @@ class DoublePendulum:
 
     angle = 0 at straight down.
     """
-    def __init__(self, params = (9.81, 1, 1, 1, 1, 1), y0 = [0, 0, 0, 0, 0, 0], t_start = 0.0, t_end = 20, fps = 60, max_motor_force = 100):
+    def __init__(self, params = (9.81, 1, 1, 1, 1, 1), y0 = [0, 0, 0, 0, 0, 0], t_start = 0.0, t_end = 20, fps = 60, max_motor_force = 100, target = 0):
         self.g = 9.81
         self.calc_M, self.calc_F = self.physics_engine()
         self.params = params  # gravity, mass of cart, mass rod1, mass rod2, length rod1, length rod2
@@ -31,6 +31,7 @@ class DoublePendulum:
         self.dt = self.t_eval[1] - self.t_eval[0]
         self.solution = []
         self.max_motor_force = max_motor_force
+        self.target = target
 
     def physics_engine(self):
         # 1. Define Time and Constants
@@ -180,9 +181,9 @@ class DoublePendulum:
             
         return np.array(self.solution), 0
 
-    def solve_step_stablize_position(self, target = 0, kp = 4, ki = 0.001, kd = 400):
+    def solve_step_stablize_position(self, kp = 4, ki = 0.001, kd = 400):
 
-        controller = pid.pid_controller(target, self.state[0], kp, ki, kd)
+        controller = pid.pid_controller(self.target, self.state[0], kp, ki, kd)
         cost = 0
 
         for t in self.t_eval:
@@ -197,15 +198,17 @@ class DoublePendulum:
             self.state = self.rk4_step()
             self.solution.append(np.append(self.state, self.motor_force))
             self.current_time += self.dt
-            cost += (target - self.state[0])**2
+            cost += (self.target - self.state[0])**2
             
         return np.array(self.solution), cost
 
-    def solve_step_inverted_rod_1(self, target = 0,kp = 50, ki = 0, kd = 1800, mode = 'analog'):
-
+    def solve_step_inverted_rod_1(self, kp = 50, ki = 0, kd = 1800, mode = 'analog'):
+        
+        '''Rod 1 stablize at upright position, rod 2 stablize at down position'''
+        
         if mode == 'analog':
             angular_controller = pid.pid_controller(np.pi, self.state[1], kp, ki, kd)
-            position_controller = pid.pid_controller(target, self.state[0], 13, 0, 1300, display = False)
+            position_controller = pid.pid_controller(self.target, self.state[0], 13, 0, 1300, display = False)
         elif mode == 'RL':
             NN = nn.NeuralNetwork((6, 64, 64, 2), [nn.ReLU, nn.ReLU, [nn.linear, nn.sigmoid]], 'nn_library')
             NN.theta_recover()
@@ -291,7 +294,7 @@ class DoublePendulum:
                     angular_controller.target = theoratical_target
                     self.motor_force = angular_controller.update()
 
-                    if (self.state[2] <= np.pi/15 or self.state[2] >= 29 * np.pi/15) and abs(self.state[5]) <= np.pi/15 and abs(self.state[0] - target) <= 0.7:
+                    if (self.state[2] <= np.pi/15 or self.state[2] >= 29 * np.pi/15) and abs(self.state[5]) <= np.pi/15 and abs(self.state[0] - self.target) <= 0.7:
                         stable_counter = 0 
 
 
@@ -314,15 +317,17 @@ class DoublePendulum:
             state_history.append(state_string)
 
             self.current_time += self.dt
-            cost += (target - self.state[0])**2
+            cost += (self.target - self.state[0])**2
             
         return np.array(self.solution), cost, state_history
 
-    def solve_step_inverted_rod_2(self, target = 0,kp = 15, ki = 0.1, kd = 2000, mode = 'analog'):
-
+    def solve_step_inverted_rod_2(self, kp = 15, ki = 0.1, kd = 2000, mode = 'analog'):
+        
+        '''Both rods stablize at upright position'''
+        
         if mode == 'analog':
             angular_controller = pid.pid_controller(np.pi, self.state[1], kp, ki, kd)
-            position_controller = pid.pid_controller(target, self.state[0], 2, 0, 500, display = False)
+            position_controller = pid.pid_controller(self.target, self.state[0], 2, 0, 500, display = False)
             angular2_countroller = pid.pid_controller(np.pi, self.state[2], kp, ki, kd)
         elif mode == 'RL':
             NN = nn.NeuralNetwork((6, 64, 64, 2), [nn.ReLU, nn.ReLU, [nn.linear, nn.sigmoid]], 'nn_library')
@@ -339,7 +344,7 @@ class DoublePendulum:
                 angular_controller.location = self.state[1]
                 position_controller.location = self.state[0]
                 angular2_countroller.location = self.state[2]
-                state_energy = ((-np.cos(self.state[2]) + 1) * 6 + 0.42 * (self.state[5]**2)) / 12  # 0 when stationary at bottom, 1 when stationary at top
+                # state_energy = ((-np.cos(self.state[2]) + 1) * 6 + 0.42 * (self.state[5]**2)) / 12  # 0 when stationary at bottom, 1 when stationary at top
 
                 # Stage 0: If in excessive motion, stablalize
                 if abs(self.state[3]) > 40 or abs(self.state[4]) > 30 or abs(self.state[5]) > 30 or stable_counter == -1:
@@ -431,7 +436,6 @@ class DoublePendulum:
                     if self.state[2] <= 7 * np.pi/8 or self.state[2] >= 9 * np.pi/8:
                         stable_counter = -2
                     
- 
 
             elif mode == 'RL':
                 self.motor_force = NN.feedforward(self.state)[-1][0][1] * 100
@@ -450,10 +454,9 @@ class DoublePendulum:
             state_history.append(state_string)
 
             self.current_time += self.dt
-            cost += (target - self.state[0])**2
+            cost += (self.target - self.state[0])**2
             
         return np.array(self.solution), cost, state_history
-
 
     def animate(self, speed = 1):
         solution, cost, state_history = self.solve_step_inverted_rod_2()
@@ -561,7 +564,7 @@ class DoublePendulum:
         plt.show()
 
 class SinglePendulum:
-    def __init__(self, params = (9.81, 1, 1, 1), y0 = [0, np.pi, 0, 0], t_start = 0.0, t_end = 20, fps = 60, max_motor_force = 100):
+    def __init__(self, params = (9.81, 1, 1, 1), y0 = [0, np.pi, 0, 0], t_start = 0.0, t_end = 20, fps = 60, max_motor_force = 100, target = 0):
         self.g = 9.81
         self.calc_M, self.calc_F = self.physics_engine()
         self.params = params
@@ -575,6 +578,7 @@ class SinglePendulum:
         self.dt = self.t_eval[1] - self.t_eval[0]
         self.solution = []
         self.max_motor_force = max_motor_force
+        self.target = target
 
     def physics_engine(self):
         # 1. Define Time and Constants
@@ -709,9 +713,9 @@ class SinglePendulum:
             
         return np.array(self.solution), 0
 
-    def solve_step_stablize_position(self, target = 0, kp = 4, ki = 0.001, kd = 400):
+    def solve_step_stablize_position(self, kp = 4, ki = 0.001, kd = 400):
         '''Just stabalize the cart at the desired location'''
-        controller = pid.pid_controller(target, self.state[0], kp, ki, kd)
+        controller = pid.pid_controller(self.target, self.state[0], kp, ki, kd)
         cost = 0
 
         for t in self.t_eval:
@@ -726,18 +730,18 @@ class SinglePendulum:
             self.state = self.rk4_step()
             self.solution.append(np.append(self.state, self.motor_force))
             self.current_time += self.dt
-            cost += (target - self.state[0])**2
+            cost += (self.target - self.state[0])**2
             
         return np.array(self.solution), cost
 
-    def solve_step_inverted_rod(self, target = 0, kp = 50, ki = 0, kd = 1600, mode = 'analog'):
+    def solve_step_inverted_rod(self, kp = 50, ki = 0, kd = 1600, mode = 'analog'):
 
         if mode == 'analog':
             angular_controller = pid.pid_controller(np.pi, self.state[1], kp, ki, kd)
-            position_controller = pid.pid_controller(target, self.state[0], 13, 0, 1800, display = False)
+            position_controller = pid.pid_controller(self.target, self.state[0], 13, 0, 1800, display = False)
 
         elif mode == 'RL':
-            NN = nn.NeuralNetwork((6, 64, 64, 2), [nn.ReLU, nn.ReLU, [nn.linear, nn.sigmoid]], 'nn_library')
+            NN = nn.NeuralNetwork((4, 64, 64, 2), [nn.ReLU, nn.ReLU, [nn.linear, nn.sigmoid]], 'nn_library')
             NN.theta_recover()
             
         cost = 0
@@ -757,7 +761,7 @@ class SinglePendulum:
                 # Stage 0: If in excessive motion, stablalize
                 if abs(self.state[3]) > 10 or abs(self.state[2]) > 10 or stable_counter == -1:
                     state_string = 'excessive motion'
-                    self.motor_force = -(self.state[0] - target + self.state[2]) * self.max_motor_force * 0.1
+                    self.motor_force = -(self.state[0] - self.target + self.state[2]) * self.max_motor_force * 0.1
                     stable_counter = -1
                     if abs(self.state[3]) < np.pi/2 and abs(self.state[2]) < 2:
                         stable_counter = 0
@@ -801,10 +805,11 @@ class SinglePendulum:
 
                     self.motor_force = angular_input
                 
-
             elif mode == 'RL':
-                self.motor_force = NN.feedforward(self.state)[-1][0][1] * 100
-            
+                scale_factors = np.array([10.0, 2 * np.pi, 50.0, 50.0])
+
+                self.motor_force = (NN.feedforward(self.state / scale_factors)[-1][0][1] - 0.5) * 200
+
             # reject if the motor is asked to do more than it could
             if abs(self.motor_force) >= self.max_motor_force:
                 print('Overload at ', t, 's')
@@ -816,15 +821,20 @@ class SinglePendulum:
             # 2. Advance the physics by exactly one frame (dt)
             self.state = self.rk4_step()
             self.solution.append(np.append(self.state, self.motor_force))
-            state_history.append(state_string)
+    
+            if mode == 'analog':
+                state_history.append(state_string)
+            elif mode == "RL":
+                state_history.append("RL")
+
 
             self.current_time += self.dt
-            cost += (target - self.state[0])**2
+            cost += (self.target - self.state[0])**2
             
         return np.array(self.solution), cost, state_history
 
     def animate(self, mode = 'RL', speed = 1):
-        solution, cost, state_history = self.solve_step_inverted_rod()
+        solution, cost, state_history = self.solve_step_inverted_rod(mode = mode)
         print('cost =', cost)
         # Extract position arrays for the animation
         x_cart_history = solution[:, 0]
@@ -913,8 +923,11 @@ if __name__ == "__main__":
     # SP = SinglePendulum(params=(9.8, 1, 1, 1), y0 = [0, 0, 0, 0],t_end=60)
     # SP.animate()
 
-    # , y0 = [1, np.pi, np.pi+0.01, 0, 0, 0]
-    DP = DoublePendulum(params=(9.8, 1, 1, 1, 1, 1.2), t_end=60)
-    DP.animate(speed = 1)
-# %%
+    # DP = DoublePendulum(params=(9.8, 1, 1, 1, 1, 1.2), t_end=60)
+    # DP.animate()
+
+    SP = SinglePendulum(params=(9.8, 1, 1, 1), y0 = [0, np.pi+0.3, 0, 0],t_end=60)
+    SP.animate(mode = 'RL')
+    SP = SinglePendulum(params=(9.8, 1, 1, 1), y0 = [0, np.pi-0.3, 0, 0],t_end=60)
+    SP.animate(mode = 'RL')
 
