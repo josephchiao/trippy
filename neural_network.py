@@ -98,13 +98,21 @@ class NeuralNetwork:
         else:
             delta = [(y - layers[-1]) * self.norm_fcn[-1](layers[-1], type = 'Derivative')]
 
-        # --- The rest of your code stays exactly the same! ---
         for i in range(2, self.leng):
             delta.append(np.dot(delta[-1], self.theta[-i+1].T) * self.norm_fcn[-i](layers[-i], type = 'Derivative'))
 
         for i in range(self.leng-1):
-            self.theta[i] += np.dot(layers[i].T, delta[-i-1]) * learning_rate
-            self.b[i] += np.sum(delta[-i-1], axis=0, keepdims=True) * learning_rate
+
+            grad_theta = np.dot(layers[i].T, delta[-i-1])
+            grad_b = np.sum(delta[-i-1], axis=0, keepdims=True)
+            
+            batch_size = len(X)
+            grad_clip_limit = 5.0 * batch_size            
+            grad_theta = np.clip(grad_theta, -grad_clip_limit, grad_clip_limit)
+            grad_b = np.clip(grad_b, -grad_clip_limit, grad_clip_limit)
+            
+            self.theta[i] += grad_theta * learning_rate
+            self.b[i] += grad_b * learning_rate
 
         return layers
 
