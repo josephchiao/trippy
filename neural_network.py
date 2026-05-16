@@ -46,11 +46,16 @@ class NeuralNetwork:
     def theta_recover(self, i = 0):
 
         data = np.load(f'{self.location}/nn_theta_set_{i}.npz', allow_pickle=True)
-        self.theta = [data[f'arr_{i}'] for i in range(self.leng - 1)]
-        self.b = [data[f'arr_{i}'] for i in range(self.leng - 1, self.leng * 2 - 2)]
+        self.theta = [data[f'arr_{j}'] for j in range(self.leng - 1)]
+        self.b = [data[f'arr_{j}'] for j in range(self.leng - 1, self.leng * 2 - 2)]
 
     def theta_save(self, i=0):
         np.savez(f'{self.location}/nn_theta_set_{i}.npz', *self.theta, *self.b)
+
+    def theta_backup(self, i=0):
+        data = np.load(f'{self.location}/nn_theta_set_{i}.npz', allow_pickle=True)
+        np.savez(f'{self.location}/nn_theta_set_{i+1}.npz', data)
+
 
     def theta_single_use(self):
         

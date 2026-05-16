@@ -926,8 +926,8 @@ if __name__ == "__main__":
     # DP = DoublePendulum(params=(9.8, 1, 1, 1, 1, 1.2), t_end=60)
     # DP.animate()
 
-    SP = SinglePendulum(params=(9.8, 1, 1, 1), y0 = [0, np.pi+0.3, 0, 0],t_end=60)
+    SP = SinglePendulum(params=(9.8, 1, 1, 1), y0 = [0, np.pi+0.5, 0, 0],t_end=20)
     SP.animate(mode = 'RL')
-    SP = SinglePendulum(params=(9.8, 1, 1, 1), y0 = [0, np.pi-0.3, 0, 0],t_end=60)
+    SP = SinglePendulum(params=(9.8, 1, 1, 1), y0 = [0, np.pi-0.5, 0, 0],t_end=20)
     SP.animate(mode = 'RL')
 
