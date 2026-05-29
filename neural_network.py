@@ -54,7 +54,9 @@ class NeuralNetwork:
 
     def theta_backup(self, i=0):
         data = np.load(f'{self.location}/nn_theta_set_{i}.npz', allow_pickle=True)
-        np.savez(f'{self.location}/nn_theta_set_{i+1}.npz', data)
+        theta = [data[f'arr_{j}'] for j in range(self.leng - 1)]
+        b = [data[f'arr_{j}'] for j in range(self.leng - 1, self.leng * 2 - 2)]
+        np.savez(f'{self.location}/nn_theta_set_{i+1}.npz', *theta, *b)
 
 
     def theta_single_use(self):

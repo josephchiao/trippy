@@ -12,8 +12,8 @@ class RL_trainer:
     def __init__(self, model):
         
         self.model = model
-        self.log_std = -3
-        self.log_floor = -4
+        self.log_std = -2.62
+        self.log_floor = -3
         self.log_ceiling = 2
         self.d_log_std = 0
         self.NN = nn.NeuralNetwork((4, 64, 64, 2), [nn.ReLU, nn.ReLU, [nn.linear, nn.sigmoid]], 'nn_library')
@@ -21,10 +21,15 @@ class RL_trainer:
         self.X = self.NN.theta_recover()
 
     def reward(self, state):
-        location_cf = 4
+        location_cf = 10
         angle_cf = 15
         # - abs(self.model.motor_force)/10
-        return  (25 - angle_cf * math.cos(state[1]) - location_cf * (state[0])**2) / 10
+        base_reward =  (25 - angle_cf * math.cos(state[1]) - location_cf * (state[0])**2) / 10
+    
+        if abs(state[0]) < 0.05:
+            base_reward += 2
+
+        return base_reward
 
     def backward_std(self, action, mu, sigma, advantage):
         epsilon = 1e-8
@@ -50,14 +55,15 @@ class RL_trainer:
         reward_history = []
         log_std_history = []
         fail_count = 0
-        best_reward = 3000
+        best_reward = 20000
+        second_best_reward = 20000
         previously_saved = True
         # rolling_counter = np.zeros(50) # Maybe we need???
 
         for episode in range(5000):
 
             # learning_rate = 0.001 * (1.0 - (episode / 10000)) + 0.0001
-            learning_rate = 0.00002
+            learning_rate = 0.000002
             # Reset the simulation to the starting position
             scale_factors = np.array([10.0, 2 * np.pi, 50.0, 50.0])
             
@@ -164,7 +170,6 @@ class RL_trainer:
                     self.log_std = np.clip(self.log_std, self.log_floor, self.log_ceiling)
                 if side == -1:
                     t_1 = t
-
             print(f"Episode {episode} finished! Total Reward: {total_episode_reward:.2f}, runtime = {t_1}, {t}")
             # if t == (self.model.t_end - self.model.t_start) * self.model.fps and t_1 == t:
             #     print('full runtime')
@@ -173,14 +178,21 @@ class RL_trainer:
             #     print('Saved!')
 
             if total_episode_reward >= best_reward:
+                second_best_reward = best_reward
                 best_reward = total_episode_reward
                 self.NN.theta_backup()
                 self.NN.theta_save()
                 previously_saved = True
                 print('Saved!')
 
+            elif total_episode_reward >= second_best_reward:
+                second_best_reward = total_episode_reward
+                self.NN.theta_backup()
+                self.NN.theta_save()
+                previously_saved = True
+                print('Saved!')
 
-            if total_episode_reward < max(70, best_reward * 0.6):
+            if total_episode_reward < max(70, best_reward * 0.4):
                 fail_count += 1
             else:
                 fail_count = 0
@@ -197,6 +209,7 @@ class RL_trainer:
         # if total_episode_reward >= best_reward:
         #     self.NN.theta_save()
         #     print('Saved!')
+        self.NN.theta_save(2)
 
         fig, (ax1, ax2) = plt.subplots(2, 1)
         ax1.plot(reward_history)

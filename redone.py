@@ -742,7 +742,7 @@ class SinglePendulum:
 
         elif mode == 'RL':
             NN = nn.NeuralNetwork((4, 64, 64, 2), [nn.ReLU, nn.ReLU, [nn.linear, nn.sigmoid]], 'nn_library')
-            NN.theta_recover()
+            NN.theta_recover(0)
             
         cost = 0
         offset = 0
@@ -904,9 +904,9 @@ class SinglePendulum:
             # 4. Update the text string using the t_eval array
             current_time = self.t_eval[frame]
             time_text.set_text(f'Time: {current_time:.2f} s')
-            location_text.set_text(f'Location: {x_c:.2f} m')
-            angle_1_text.set_text(f'Angle 1: {th1:.2f} rad')
-            force_text.set_text(f'Force: {f:.2f} N')
+            location_text.set_text(f'Location: {x_c:.4f} m')
+            angle_1_text.set_text(f'Angle 1: {th1:.4f} rad')
+            force_text.set_text(f'Force: {f:.3f} N')
             state_text.set_text(f'State: {state}')
             
             # 5. Return the updated text artist
@@ -926,8 +926,8 @@ if __name__ == "__main__":
     # DP = DoublePendulum(params=(9.8, 1, 1, 1, 1, 1.2), t_end=60)
     # DP.animate()
 
-    SP = SinglePendulum(params=(9.8, 1, 1, 1), y0 = [0, np.pi+0.5, 0, 0],t_end=20)
+    SP = SinglePendulum(params=(9.8, 1, 1, 1), y0 = [2.5, np.pi, 0, 0],t_end=60)
     SP.animate(mode = 'RL')
-    SP = SinglePendulum(params=(9.8, 1, 1, 1), y0 = [0, np.pi-0.5, 0, 0],t_end=20)
+    SP = SinglePendulum(params=(9.8, 1, 1, 1), y0 = [-2.5, np.pi, 0, 0],t_end=60)
     SP.animate(mode = 'RL')
 
